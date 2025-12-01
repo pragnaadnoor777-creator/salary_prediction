@@ -1,0 +1,8 @@
+RUN THIS COMMAND FOR THE REQUIRED LIBRARIES
+
+pip install sklearn pandas joblib fastapi streamlit requests uvicorn 
+
+RANDOM POINTS 
+- FAST API - Server 
+- Streamlit - Frontend
+
