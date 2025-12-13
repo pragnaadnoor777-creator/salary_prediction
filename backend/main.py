@@ -106,19 +106,6 @@ def train_model():
     X_test_enc = preprocessor_local.transform(X_test) # Transform test data
     Y_pred = model_local.predict(X_test_enc)          # Predict on test data
 
-    '''mae = mean_absolute_error(Y_test, Y_pred)
-    mse = mean_squared_error(Y_test, Y_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(Y_test, Y_pred)
-
-    metrics = {
-        "Mean_Absolute_Error": round(mae, 2),
-        "Root_Mean_Squared_Error": round(rmse, 2),
-        "R2_Score": round(r2, 4)  # 1.0 is perfect
-    }
-    # Save metrics to a file so we can read them later
-    with open("metrics.json", "w") as f:
-        json.dump(metrics, f)'''
 
     # Save
     joblib.dump(model_local, MODEL_FILE)
