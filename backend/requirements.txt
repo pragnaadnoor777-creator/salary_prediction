@@ -1,0 +1,23 @@
+RUN THIS COMMAND FOR THE REQUIRED LIBRARIES
+
+pip install sklearn pandas joblib fastapi streamlit requests uvicorn 
+
+(OR pip3)
+
+!FIRST CHANGE DIRECTORY!
+cd salary_prediction
+
+How to run server:
+(From backend)
+cd backend
+uvicorn api:app --reload
+
+How to run frontend
+(From frontend)
+cd frontend 
+streamlit run app.py
+
+RANDOM POINTS 
+- FAST API - Server 
+- Streamlit - Frontend
+
