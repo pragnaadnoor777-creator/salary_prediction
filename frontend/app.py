@@ -1,79 +1,202 @@
-#importing streamlit and fastapi
 import streamlit as st
 import requests
+import pandas as pd
+import matplotlib.pyplot as plt
 
-st.title("Salary Prediction")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Salary Prediction System",
+    layout="wide"
+)
 
-# User input
+API_URL = "http://127.0.0.1:8000"
+
+# ---------------- SESSION STATE ----------------
+if "predicted_salary" not in st.session_state:
+    st.session_state.predicted_salary = None
+
+# ---------------- TITLE ----------------
+st.title(" Salary Prediction System")
+
+# =====================================================
+# INPUT SECTION
+# =====================================================
+st.header(" Enter Employee Details")
+
 exp = st.text_input("Experience (years)")
 edu = st.selectbox("Education Level",['Bachelor','Master','PhD'])
 job = st.selectbox("Job Title",['Engineer','Executive','Intern','Analyst','Manager',''])
 
+# =====================================================
+# SALARY PREDICTION
+# =====================================================
 if st.button("Predict Salary"):
     try:
-        # Call FastAPI endpoint
         response = requests.get(
-            "http://127.0.0.1:8001/pred_sal",
-            params={"exp": exp, "edu": edu, "job": job}
+            "http://127.0.0.1:8000/pred_sal",
+            params={"exp": exp, "edu": edu, "job": job},
+            timeout=10
         )
-        result = response.json()
 
-        # Check if prediction exists
-        if "prediction" in result:
-            st.success(f"Predicted Salary: {result['prediction']:.2f}")
-        else:
-            st.error(f"Error from API: {result.get('error', 'Unknown error')}")
+        data = response.json()
 
-    except requests.exceptions.RequestException as e:
-        st.error(f"Failed to connect to the backend: {e}")
+        st.session_state.predicted_salary = data["predicted_salary"]
 
-st.write("---") # Adds a visual divider
+        st.success(f"Predicted Salary: ₹ {st.session_state.predicted_salary:,.2f}")
+
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
+
+# =====================================================
+# DATA VISUALIZATION
+# =====================================================
+st.write("---")
 st.header("Data Visualization")
 
-if st.button("Show Salary Graph"):
+if st.button("Show Salary vs Experience Graph"):
     try:
-        # Request the image from the backend
-        graph_response = requests.get("http://127.0.0.1:8001/view_graph")
-        
-        if graph_response.status_code == 200:
-            # Display the raw image data
-            st.image(graph_response.content, caption="Salary vs Experience", use_container_width=True)
+        params = {
+            "exp": exp,
+            "edu": edu,
+            "job": job
+        }
+
+        res = requests.get(
+            "http://127.0.0.1:8000/view_graph",
+            params=params,
+            timeout=30
+        )
+
+        if res.status_code == 200:
+            st.image(res.content, caption="Salary vs Experience")
         else:
-            st.error("Failed to load graph from backend.")
-            
-    except requests.exceptions.RequestException as e:
-        st.error(f"Could not connect to backend: {e}")
+            st.error("Could not load graph")
+
+    except Exception as e:
+        st.error(f"Could not load graph: {e}")
+
+# =====================================================
+# MODEL PERFORMANCE
+# =====================================================
 st.write("---")
-st.header("Model Performance")
+st.header(" Model Performance")
 
-if st.button("Check Model Accuracy"):
+if st.button("Check Model Metrics"):
     try:
-        acc_response = requests.get("http://127.0.0.1:8001/accuracy")
-        
-        if acc_response.status_code == 200:
-            metrics = acc_response.json()
-            
-            if "error" in metrics:
-                st.error(metrics["error"])
+        acc_response = requests.get(
+            f"{API_URL}/accuracy",
+            timeout=10
+        )
+
+        metrics = acc_response.json()
+
+        metrics_df = pd.DataFrame(
+            metrics.items(),
+            columns=["Metric", "Value"]
+        )
+
+        st.table(metrics_df)
+
+    except Exception as e:
+        st.error(f"Could not load metrics: {e}")
+
+
+
+# =====================================================
+# MODEL EXPLAINABILITY (SHAP)
+# =====================================================
+st.write("---")
+st.header("Model Explainability (SHAP)")
+
+if st.button("Show Feature Impact (SHAP)"):
+    if st.session_state.predicted_salary is None:
+        st.warning("Please predict salary first.")
+    else:
+        try:
+            shap_response = requests.get(
+                f"{API_URL}/shap_explain",
+                params={"exp": exp, "edu": edu, "job": job},
+                timeout=30
+            )
+
+            data = shap_response.json()
+
+            if "shap_values" not in data:
+                st.error("SHAP data not received")
             else:
-                # Create 3 columns to display metrics side-by-side
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric(label="R2 Score (Accuracy)", value=metrics.get("R2_Score"))
-                
-                with col2:
-                    st.metric(label="Mean Absolute Error", value=f"{metrics.get('Mean_Absolute_Error')}")
-                
-                with col3:
-                    st.metric(label="Root Mean Sq Error", value=f"{metrics.get('Root_Mean_Squared_Error')}")
-        else:
-            # THIS WILL TELL US THE REAL PROBLEM
-            st.error(f"Server Error: {acc_response.status_code}")
-            st.write("Server Message:", acc_response.text)
-            
-    except requests.exceptions.RequestException as e:
-        st.error(f"Could not connect to backend: {e}")
+                shap_df = pd.DataFrame(data["shap_values"])
 
+                # Clean feature names
+                shap_df["feature"] = (
+                    shap_df["feature"]
+                    .str.replace("cat__", "")
+                    .str.replace("remainder__", "")
+                    .str.replace("_", " ")
+                )
 
+                # -------- GROUP SHAP VALUES --------
+                grouped = {
+                    "Experience": shap_df[
+                        shap_df["feature"].str.contains("Experience", case=False)
+                    ]["shap_value"].mean(),
+
+                    "Education": shap_df[
+                        shap_df["feature"].str.contains("Education", case=False)
+                    ]["shap_value"].mean(),
+
+                    "Job Title": shap_df[
+                        shap_df["feature"].str.contains("Job", case=False)
+                    ]["shap_value"].mean()
+                }
+
+                grouped_df = (
+                    pd.DataFrame.from_dict(
+                        grouped, orient="index", columns=["SHAP Value"]
+                    )
+                    .sort_values("SHAP Value")
+                )
+
+                # -------- PLOT --------
+                fig, ax = plt.subplots(figsize=(8, 4))
+                grouped_df.plot(kind="barh", ax=ax, legend=False)
+
+                ax.set_title("Feature Impact on Salary Prediction")
+                ax.set_xlabel("SHAP Value")
+                ax.grid(axis="x", alpha=0.3)
+
+                st.pyplot(fig)
+
+                st.caption(
+                    "Positive value → increases salary | Negative → decreases salary"
+                )
+
+        except Exception as e:
+            st.error(f"Could not load SHAP explanation: {e}")
+#===============================================
+#        SHAP WATERFALL
+#===============================================
+st.write("---")
+st.header("SHAP Waterfall Explanation")
+if st.button("Show SHAP Waterfall"):
+    if st.session_state.predicted_salary is None:
+        st.warning("Please predict salary first.")
+    else:
+        try:
+            res = requests.get(
+                "http://127.0.0.1:8000/shap_waterfall",
+                params={
+                    "exp": exp,
+                    "edu": edu,
+                    "job": job
+                },
+                timeout=60
+            )
+
+            if res.status_code == 200:
+                st.image(res.content, caption="SHAP Waterfall Plot")
+            else:
+                st.error("Could not load SHAP waterfall")
+
+        except Exception as e:
+            st.error(f"SHAP error: {e}")
 
