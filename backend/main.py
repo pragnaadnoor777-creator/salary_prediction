@@ -5,6 +5,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 import joblib
+from pathlib import Path
 import os
 import matplotlib
 matplotlib.use('Agg') # Required for server-based plotting (prevents GUI errors)
@@ -14,13 +15,17 @@ from fastapi.responses import Response
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import numpy as np
 import json  # To save the scores
+import shap
 
 app = FastAPI()
 
-# File paths
-MODEL_FILE = "model.pkl"
-PREPROCESSOR_FILE = "preprocessor.pkl"
-DATA_FILE = r"\Users\Narendra Adnoor\Downloads\salary_prediction-main\data\Employers_data.csv"
+# Base directory of the project
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# File paths (relative, NOT hardcoded)
+MODEL_FILE = BASE_DIR / "model.pkl"
+PREPROCESSOR_FILE = BASE_DIR / "preprocessor.pkl"
+DATA_FILE = BASE_DIR / "data" / "Employers_data.csv"
 
 # Global variables
 model = None
@@ -125,6 +130,18 @@ else:
     model = joblib.load(MODEL_FILE)
     preprocessor = joblib.load(PREPROCESSOR_FILE)
 
+# Load training data (same file used during training)
+train_df = pd.read_csv(DATA_FILE)   
+
+# Keep only input columns
+X_train = train_df[["Experience_Years", "Education_Level", "Job_Title"]]
+
+# Encode training data
+X_train_enc = preprocessor.transform(X_train)
+
+# Create SHAP explainer WITH background data
+explainer = shap.Explainer(model, X_train_enc)
+
 @app.get("/pred_sal")
 def pred_sal(exp: float, edu: str, job: str):
     """Predict salary for a given input."""
@@ -147,44 +164,65 @@ def pred_sal(exp: float, edu: str, job: str):
         print("Encoded input:\n", new_data_enc)
 
         prediction = model.predict(new_data_enc)
-        return {"prediction": float(prediction[0])}
+        return {"predicted_salary": float(prediction[0])}
 
     except Exception as e:
         # Return detailed error
         return {"error": str(e)}
+
 @app.get("/view_graph")
-def view_graph():
-    """Generates a scatter plot of Experience vs Salary and returns it as an image."""
+def view_graph(exp: float, edu: str, job: str):
     try:
-        # 1. Load the data again to plot it
-        # (Using the global DATA_FILE variable you defined earlier)
         df = pd.read_csv(DATA_FILE)
-        
-        # 2. Create the plot using Matplotlib
+
+        # Predict salary again (for safety)
+        input_df = pd.DataFrame({
+            "Experience_Years": [exp],
+            "Education_Level": [edu],
+            "Job_Title": [job]
+        })
+
+        input_enc = preprocessor.transform(input_df)
+        pred_salary = model.predict(input_enc)[0]
+
         plt.figure(figsize=(10, 6))
-        
-        # Scatter plot: x=Experience, y=Salary
-        plt.scatter(df['Experience_Years'], df['Salary'], color='blue', alpha=0.6, label='Actual Data')
-        
-        plt.title('Salary Distribution by Experience')
-        plt.xlabel('Years of Experience')
-        plt.ylabel('Salary')
-        plt.grid(True, linestyle='--', alpha=0.5)
+
+        # Actual data
+        plt.scatter(
+            df['Experience_Years'],
+            df['Salary'],
+            alpha=0.4,
+            label="Actual Data"
+        )
+
+        # Predicted point
+        plt.scatter(
+            exp,
+            pred_salary,
+            color="red",
+            s=120,
+            label="Predicted Salary"
+        )
+
+        plt.title(
+            f"Salary vs Experience\n"
+            f"(Education: {edu}, Job: {job})"
+        )
+        plt.xlabel("Years of Experience")
+        plt.ylabel("Salary")
         plt.legend()
-        
-        # 3. Save plot to a memory buffer (RAM) instead of a file
+        plt.grid(True)
+
         buf = io.BytesIO()
         plt.savefig(buf, format="png")
         buf.seek(0)
-        
-        # 4. Clear the plot to free memory
         plt.close()
-        
-        # 5. Return the image data
+
         return Response(content=buf.getvalue(), media_type="image/png")
 
     except Exception as e:
-        return {"error": f"Could not generate graph: {str(e)}"}
+        return {"error": str(e)}
+
 @app.get("/accuracy")
 def get_accuracy():
     """Returns the performance metrics of the model."""
@@ -193,4 +231,112 @@ def get_accuracy():
             return json.load(f)
     else:
         return {"error": "Metrics not found. Please delete model.pkl and restart to re-train."}
-    
+
+@app.get("/shap_explain")
+def shap_explain(exp: float, edu: str, job: str):
+    try:
+        input_df = pd.DataFrame({
+            "Experience_Years": [exp],
+            "Education_Level": [edu],
+            "Job_Title": [job]
+        })
+
+        input_enc = preprocessor.transform(input_df)
+
+        background = preprocessor.transform(
+            pd.read_csv(DATA_FILE)[
+                ["Experience_Years", "Education_Level", "Job_Title"]
+            ].iloc[:50]
+        )
+
+        explainer = shap.KernelExplainer(model.predict, background)
+        shap_values = explainer.shap_values(input_enc)
+
+        feature_names = preprocessor.get_feature_names_out()
+
+        explanation = [
+            {
+                "feature": feature_names[i],
+                "shap_value": float(shap_values[0][i])
+            }
+            for i in range(len(feature_names))
+        ]
+
+        return {
+            "base_value": float(explainer.expected_value),
+            "prediction": float(model.predict(input_enc)[0]),
+            "shap_values": explanation
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/shap_waterfall")
+def shap_waterfall(exp: float, edu: str, job: str):
+    try:
+        # Input
+        input_df = pd.DataFrame({
+            "Experience_Years": [exp],
+            "Education_Level": [edu],
+            "Job_Title": [job]
+        })
+
+        input_enc = preprocessor.transform(input_df)
+
+        # Model pieces
+        intercept = model.intercept_
+        coef = model.coef_
+        feature_names = preprocessor.get_feature_names_out()
+
+        # Individual feature contributions
+        contributions = {
+            feature_names[i]: coef[i] * input_enc[0][i]
+            for i in range(len(feature_names))
+        }
+
+        # Group contributions
+        grouped = {
+            "Experience": sum(v for k, v in contributions.items() if "Experience" in k),
+            "Education": sum(v for k, v in contributions.items() if "Education_Level" in k),
+            "Job Title": sum(v for k, v in contributions.items() if "Job_Title" in k),
+        }
+
+        # Waterfall values
+        labels = ["Base Salary"] + list(grouped.keys()) + ["Final Prediction"]
+        values = [intercept] + list(grouped.values())
+        final_prediction = intercept + sum(grouped.values())
+        values.append(final_prediction)
+
+        # Cumulative for plotting
+        cumulative = [0]
+        for v in values[:-1]:
+            cumulative.append(cumulative[-1] + v)
+
+        # Plot
+        plt.figure(figsize=(9, 5))
+
+        colors = ["gray"] + ["green" if v >= 0 else "red" for v in grouped.values()] + ["blue"]
+
+        for i in range(len(values)):
+            plt.barh(
+                labels[i],
+                values[i],
+                left=cumulative[i],
+                color=colors[i]
+            )
+
+        plt.axvline(0, color="black", linewidth=0.8)
+        plt.title("Salary Prediction Waterfall Explanation")
+        plt.xlabel("Salary Value")
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        plt.close()
+
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    except Exception as e:
+        return {"error": str(e)}
+

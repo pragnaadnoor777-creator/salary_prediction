@@ -10,7 +10,7 @@ cd salary_prediction
 How to run server:
 (From backend)
 cd backend
-uvicorn api:app --reload
+uvicorn main:app --reload
 
 How to run frontend
 (From frontend)
