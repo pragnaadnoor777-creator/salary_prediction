@@ -22,7 +22,7 @@ app = FastAPI()
 # Base directory of the project
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# File paths (relative, NOT hardcoded)
+# File paths (relative)
 MODEL_FILE = BASE_DIR / "model.pkl"
 PREPROCESSOR_FILE = BASE_DIR / "preprocessor.pkl"
 DATA_FILE = BASE_DIR / "data" / "Employers_data.csv"
@@ -30,6 +30,10 @@ DATA_FILE = BASE_DIR / "data" / "Employers_data.csv"
 # Global variables
 model = None
 preprocessor = None
+
+#======================================================
+#                    HASINI'S PART
+#======================================================
 
 def evaluate_model():
     """
@@ -80,6 +84,10 @@ def evaluate_model():
     except Exception as e:
         print(f"Could not evaluate model: {e}")
         return None
+
+#================================================
+#             PRAGNA'S PART
+#================================================
 
 def train_model():
     """Train the model, calculate accuracy metrics, and save everything."""
@@ -170,6 +178,10 @@ def pred_sal(exp: float, edu: str, job: str):
         # Return detailed error
         return {"error": str(e)}
 
+#========================================================
+#                     PAAVANI'S PART
+#========================================================
+
 @app.get("/view_graph")
 def view_graph(exp: float, edu: str, job: str):
     try:
@@ -232,6 +244,10 @@ def get_accuracy():
     else:
         return {"error": "Metrics not found. Please delete model.pkl and restart to re-train."}
 
+#===================================================
+#                NIKHITA'S PART
+#===================================================
+
 @app.get("/shap_explain")
 def shap_explain(exp: float, edu: str, job: str):
     try:
@@ -270,6 +286,7 @@ def shap_explain(exp: float, edu: str, job: str):
 
     except Exception as e:
         return {"error": str(e)}
+
 
 @app.get("/shap_waterfall")
 def shap_waterfall(exp: float, edu: str, job: str):
