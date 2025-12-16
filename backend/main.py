@@ -15,7 +15,6 @@ from fastapi.responses import Response
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import numpy as np
 import json  # To save the scores
-import shap
 
 app = FastAPI()
 
@@ -147,8 +146,6 @@ X_train = train_df[["Experience_Years", "Education_Level", "Job_Title"]]
 # Encode training data
 X_train_enc = preprocessor.transform(X_train)
 
-# Create SHAP explainer WITH background data
-explainer = shap.Explainer(model, X_train_enc)
 
 @app.get("/pred_sal")
 def pred_sal(exp: float, edu: str, job: str):
