@@ -21,6 +21,7 @@ st.title(" Salary Prediction System")
 # =====================================================
 # INPUT SECTION
 # =====================================================
+
 st.header(" Enter Employee Details")
 
 exp = st.text_input("Experience (years)")
@@ -30,6 +31,7 @@ job = st.selectbox("Job Title",['Engineer','Executive','Intern','Analyst','Manag
 # =====================================================
 # SALARY PREDICTION
 # =====================================================
+
 if st.button("Predict Salary"):
     try:
         response = requests.get(
@@ -50,6 +52,7 @@ if st.button("Predict Salary"):
 # =====================================================
 # DATA VISUALIZATION
 # =====================================================
+
 st.write("---")
 st.header("Data Visualization")
 
@@ -78,6 +81,7 @@ if st.button("Show Salary vs Experience Graph"):
 # =====================================================
 # MODEL PERFORMANCE
 # =====================================================
+
 st.write("---")
 st.header(" Model Performance")
 
@@ -100,81 +104,10 @@ if st.button("Check Model Metrics"):
     except Exception as e:
         st.error(f"Could not load metrics: {e}")
 
-
-
-# =====================================================
-# MODEL EXPLAINABILITY (SHAP)
-# =====================================================
-st.write("---")
-st.header("Model Explainability (SHAP)")
-
-if st.button("Show Feature Impact (SHAP)"):
-    if st.session_state.predicted_salary is None:
-        st.warning("Please predict salary first.")
-    else:
-        try:
-            shap_response = requests.get(
-                f"{API_URL}/shap_explain",
-                params={"exp": exp, "edu": edu, "job": job},
-                timeout=30
-            )
-
-            data = shap_response.json()
-
-            if "shap_values" not in data:
-                st.error("SHAP data not received")
-            else:
-                shap_df = pd.DataFrame(data["shap_values"])
-
-                # Clean feature names
-                shap_df["feature"] = (
-                    shap_df["feature"]
-                    .str.replace("cat__", "")
-                    .str.replace("remainder__", "")
-                    .str.replace("_", " ")
-                )
-
-                # -------- GROUP SHAP VALUES --------
-                grouped = {
-                    "Experience": shap_df[
-                        shap_df["feature"].str.contains("Experience", case=False)
-                    ]["shap_value"].mean(),
-
-                    "Education": shap_df[
-                        shap_df["feature"].str.contains("Education", case=False)
-                    ]["shap_value"].mean(),
-
-                    "Job Title": shap_df[
-                        shap_df["feature"].str.contains("Job", case=False)
-                    ]["shap_value"].mean()
-                }
-
-                grouped_df = (
-                    pd.DataFrame.from_dict(
-                        grouped, orient="index", columns=["SHAP Value"]
-                    )
-                    .sort_values("SHAP Value")
-                )
-
-                # -------- PLOT --------
-                fig, ax = plt.subplots(figsize=(8, 4))
-                grouped_df.plot(kind="barh", ax=ax, legend=False)
-
-                ax.set_title("Feature Impact on Salary Prediction")
-                ax.set_xlabel("SHAP Value")
-                ax.grid(axis="x", alpha=0.3)
-
-                st.pyplot(fig)
-
-                st.caption(
-                    "Positive value → increases salary | Negative → decreases salary"
-                )
-
-        except Exception as e:
-            st.error(f"Could not load SHAP explanation: {e}")
 #===============================================
 #        SHAP WATERFALL
 #===============================================
+
 st.write("---")
 st.header("SHAP Waterfall Explanation")
 if st.button("Show SHAP Waterfall"):

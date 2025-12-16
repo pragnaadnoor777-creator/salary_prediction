@@ -248,46 +248,6 @@ def get_accuracy():
 #                NIKHITA'S PART
 #===================================================
 
-@app.get("/shap_explain")
-def shap_explain(exp: float, edu: str, job: str):
-    try:
-        input_df = pd.DataFrame({
-            "Experience_Years": [exp],
-            "Education_Level": [edu],
-            "Job_Title": [job]
-        })
-
-        input_enc = preprocessor.transform(input_df)
-
-        background = preprocessor.transform(
-            pd.read_csv(DATA_FILE)[
-                ["Experience_Years", "Education_Level", "Job_Title"]
-            ].iloc[:50]
-        )
-
-        explainer = shap.KernelExplainer(model.predict, background)
-        shap_values = explainer.shap_values(input_enc)
-
-        feature_names = preprocessor.get_feature_names_out()
-
-        explanation = [
-            {
-                "feature": feature_names[i],
-                "shap_value": float(shap_values[0][i])
-            }
-            for i in range(len(feature_names))
-        ]
-
-        return {
-            "base_value": float(explainer.expected_value),
-            "prediction": float(model.predict(input_enc)[0]),
-            "shap_values": explanation
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
 @app.get("/shap_waterfall")
 def shap_waterfall(exp: float, edu: str, job: str):
     try:
